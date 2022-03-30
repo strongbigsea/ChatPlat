@@ -18,6 +18,7 @@
 #include "common/proto.h"
 #include "common/ret_value.h"
 #include "proto/message_define.pb.h"
+#include "DbManager.h"
 
 ssp::CommonReq common_req;
 ssp::CommonRsp common_rsp;
@@ -27,9 +28,11 @@ UserManager user_svr;
 RelationManager rela_svr;
 MessageManager mess_svr;
 PhotoManager photo_svr;
+DbManager db_svr;
 
 int main(){
-	user_svr.Start();
+	db_svr.Init();
+	user_svr.Start(&db_svr);
 	rela_svr.Start();
 	mess_svr.Start();
 	photo_svr.Start();
@@ -78,7 +81,7 @@ int main(){
 			
 			case LOGIN_REQ:
 			{
-				common_rsp.mutable_login_rsp()->Clear();
+				common_rsp.mutable_login_rsp()->Clear();//发送请求之前把接收到的缓存清空
 				ret=user_svr.LoginCheck(common_req.login_req().user_name().c_str(),
 										common_req.login_req().password().c_str());
 				
@@ -151,9 +154,9 @@ int main(){
 				int user_id=common_req.get_message_list_req().user_id();
 				ret=user_svr.CheckExist(user_id);
 				if(ret==USER_EXIST){
-					vector<int> ids=mess_svr.GetMessageIds(user_id);
+					vector<int> ids=mess_svr.GetMessageIds(user_id);//获取消息列表
 					for(int i=0;i<ids.size();i++){
-						MessageInfo* message=mess_svr.GetMessage(ids[i]);
+						MessageInfo* message=mess_svr.GetMessage(ids[i]);//获取每条消息
 						ssp::MessageItem* item=common_rsp.mutable_get_message_list_rsp()->add_message_list();
 						item->set_publisher_id(message->user_id());
 						item->set_publish_time(message->publish_time());
@@ -194,7 +197,7 @@ int main(){
 			default:
 			break;
 		}
-		usleep(5000);
+		//usleep(5000);
 	}
 	user_svr.Shutdown();
 	rela_svr.Shutdown();

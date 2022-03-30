@@ -10,10 +10,12 @@
 #include "common/proto.h"
 #include "proto/message_define.pb.h"
 
-#define GOTO_NEXT if(ret==0){phase++;}
+#define GOTO_NEXT if(ret==0){phase++;}  //重复使用的部分直接定义宏 节约逻辑里面的代码
 #define GOTO_LOGIN if(ret==0){phase=5;}
+#define GET_OUT if(ret==0){phase=999;}
 #define WAIT_RSP_GO_NEXT ret=RecvRsp();GOTO_NEXT
 #define WAIT_RSP_GO_LOGIN ret=RecvRsp();GOTO_LOGIN
+#define WAIT_RSP_GET_OUT ret=RecvRsp();GET_OUT
 #define CHECK_SERVER_ON if(ret<0){ \
 							printf("Server Not Ready\n"); \
 							return 0; \
@@ -21,8 +23,11 @@
 
 #define SEND common_req.SerializeToArray(sock.send_buffer,common_req.ByteSize());\
 	int ret=sock.SocketSend(common_req.ByteSize());\
-	printf("----[debug]ret:%d\n",ret);\
+	send_count++;\
 	return ret;
+
+int send_count=0;
+int recv_count=0;
 
 ssp::CommonReq common_req;
 ssp::CommonRsp common_rsp;
@@ -46,12 +51,12 @@ int Login(const char *user_name,const char* password){
 	common_req.mutable_login_req()->set_password(password);
 	SEND
 }
-int AddFriend(int user_id,int other_id){
+int AddFriend(int user_id,int other_id){//加好友
 	common_req.Clear();
 	common_req.mutable_header()->set_ver(1);
 	common_req.mutable_header()->set_cmd_type(ADD_FRIEND_REQ);
 	common_req.mutable_add_friend_req()->set_user_id(user_id);
-	common_req.mutable_add_friend_req()->set_other_id(other_id);
+	common_req.mutable_add_friend_req()->set_other_id(other_id);//用压测工具不断区调优的时侯方便去测，所以这里做成接口形式。
 	SEND
 }
 int DelFriend(int user_id,int other_id){
@@ -88,7 +93,7 @@ int ShutDown(){
 	common_req.Clear();
 	common_req.mutable_header()->set_ver(1);
 	common_req.mutable_header()->set_cmd_type(SERVER_SHUTDOWN);
-	common_req.SerializeToArray(sock.send_buffer,common_req.ByteSize());
+	common_req.SerializeToArray(sock.send_buffer,common_req.ByteSize());//进行序列化
 	int ret=sock.SocketSend(common_req.ByteSize());
 	return ret;
 }
@@ -97,6 +102,8 @@ int RecvRsp(){
 	if(ret>0){
 		common_rsp.ParseFromArray(sock.recv_buffer,10240);
 		int cmd_type=common_rsp.header().cmd_type();
+		recv_count++;
+		if(recv_count>0)return 0;
 		switch(cmd_type){
 			case REG_RSP:
 				printf("Receive Reg Rsp\n");
@@ -138,11 +145,22 @@ int main(){
 	int ret;
 	ret=sock.Init();
 	ret=sock.ClientSocketInit();
-	CHECK_SERVER_ON
+	CHECK_SERVER_ON//宏定义
 	int client_on=1;
-	int phase=1;
+	int phase=1;//定义不同的阶段
+	int time_begin=time(NULL);
+	printf("----[debug]begin_time:%d\n",time_begin);
 	while(client_on){
-		printf("----[debug]phase=%d\n",phase);
+		int time_now=time(NULL);
+		//printf("----[debug]now_time:%d\n",time_now);
+		if(time_now-time_begin>60){//如果时间大于60秒，则自动退出
+			printf("----[debug]end_time:%d\n",time_now);
+			printf("----[debug]send %d %d\n----[debug]recv %d %d\n",
+		  			send_count,send_count/60,
+		  			recv_count,recv_count/60);
+			phase=999;
+		}
+		//printf("----[debug]phase=%d\n",phase);
 		switch(phase){
 			case 1:
 				ret=Register("hank1234","12345678");
@@ -155,7 +173,8 @@ int main(){
 				ret=Register("hank5678","88888888");
 				GOTO_NEXT
 				break;
-			case 4:
+			case 4://等待服务端关闭
+				//WAIT_RSP_GET_OUT
 				WAIT_RSP_GO_NEXT
 				break;
 			case 5:
@@ -205,8 +224,8 @@ int main(){
 				GOTO_NEXT
 				break;
 			case 18:
-				WAIT_RSP_GO_NEXT
-				//WAIT_RSP_GO_LOGIN
+				//WAIT_RSP_GO_NEXT
+				WAIT_RSP_GO_LOGIN
 				break;
 			default:
 				ret=ShutDown();
@@ -214,7 +233,7 @@ int main(){
 				client_on=0;
 			break;
 		}
-		usleep(5000);
+		//usleep(5000);
 	}
 
 	sock.ClientClose();

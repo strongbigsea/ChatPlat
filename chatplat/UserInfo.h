@@ -1,11 +1,14 @@
+#ifndef _USER_INFO_H_
+#define _USER_INFO_H_
+
 #include "string.h"
 #include "common/macro.h"
 
-//#include "proto/user_info_base.pb.h"
+#include "proto/user_info_base.pb.h"
 class UserInfo{
-	//public:
-	//int From(ssp::UserIofoBase pb_user);
-	//int To(ssp::UserInfoBase &pb_user);
+	public:
+		int FromPb(ssp::UserInfoBase &pb_user);
+		int ToPb(ssp::UserInfoBase &pb_user);
 	private:
 		GETSETVAR(int,user_id)
 		GETSETSTR(256,user_name)
@@ -19,3 +22,5 @@ class UserInfo{
 		GETSETVAR(int,logout_time)
 		GETSETVAR(int,db_flag)
 };
+
+#endif

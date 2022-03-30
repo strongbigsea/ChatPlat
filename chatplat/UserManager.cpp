@@ -10,13 +10,35 @@
 #include "common/ret_value.h"
 
 
-int UserManager::Start(){
-	//todo
-	set_cur_user_id(10001);
+int UserManager::Start(DbManager* db_svr){
+	db_svr_ = db_svr;
+	//Get Current User ID from DB
+	set_cur_user_id(db_svr_->GetCurUserId());
+	printf("cur_user_id: %d\n",cur_user_id());
 	set_user_count(0);
-	//todo
 	//read users from DB;
-	//read cur_user_id from DB;
+	int ret=db_svr_->GetUsersBegin();
+	int user_i=0;
+	if(ret==SUCCESS){
+		ret=db_svr_->GetUsersOneByOne(&users_[user_i]);
+		if(ret==SUCCESS){
+			printf("%d %s %s\n",users_[user_i].user_id(),users_[user_i].user_name(),users_[user_i].password());
+			user_i++;
+		}
+		while(ret!=DB_NO_MORE_DATA){
+			ret=db_svr_->GetUsersOneByOne(&users_[user_i]);
+			if(ret==SUCCESS){
+				printf("%d %s %s\n",users_[user_i].user_id(),users_[user_i].user_name(),users_[user_i].password());
+				user_i++;
+			};
+		}
+		ret=db_svr_->GetUsersEnd();
+		set_user_count(user_i);
+		printf("UserCount:%d\n",user_count_);
+	}else{
+		printf("UserManager Start Failed(Db Get User Failed: %d)\n",ret);
+		return ret;
+	}
 	printf("UserManager Start\n");
 	return SUCCESS;
 }
@@ -54,6 +76,7 @@ UserInfo* UserManager::GetUser(int user_id){
 
 
 int UserManager::CreateUser(const char* user_name,const char* password, int from, int reg_time){
+	int user_index_saved=-1;
 	for(int i=0;i<user_count_;i++){
 		if(strcmp(users_[i].user_name(),user_name)==0){
 			return USER_EXIST;
@@ -67,12 +90,16 @@ int UserManager::CreateUser(const char* user_name,const char* password, int from
 		users_[user_count_].set_from(from);
 		users_[user_count_].set_reg_time(reg_time);
 		users_[user_count_].set_db_flag(FLAG_INSERT);
+		user_index_saved = user_count_;	
 		user_count_++;
+	}else{
+		return USER_TOO_MUCH;
 	}
 	int ret_user_id=cur_user_id();
 	set_cur_user_id(cur_user_id()+1);
-
-	//todo saveuser()
+	printf("changed!cur_user_id: %d\n",cur_user_id());
+	//SaveUser()
+	db_svr_->InsertUser(&users_[user_index_saved]);
 	return ret_user_id;	
 }
 

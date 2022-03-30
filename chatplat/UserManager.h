@@ -7,13 +7,17 @@
 #define _USERMANAGER_H
 #include "common/macro.h"
 #include "UserInfo.h"
+#include "DbManager.h"
+
 class UserManager{
 private:
 	UserInfo users_[10240];
 	GETSETVAR(int,user_count)
 	GETSETVAR(int,cur_user_id)
+private:
+	DbManager* db_svr_;
 public:
-	int Start();
+	int Start(DbManager* db_svr);
 	int Proc();
 	int Restart();
 	int Shutdown();

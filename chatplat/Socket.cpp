@@ -64,7 +64,7 @@ int SspSocket::SocketCheckRecv(){
 
 int SspSocket::SocketSend(int send_size){
 	int ret=send(client_sock,send_buffer,send_size,0);
-	memset(send_buffer,0,send_size);
+	memset(send_buffer,0,send_size);//发送之后将缓冲区中的数据置为0，防止解析到错误数据
 	if(ret<0){
 		ClientClose();
 		return -1;

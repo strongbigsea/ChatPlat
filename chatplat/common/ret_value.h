@@ -11,6 +11,7 @@
 #define USER_NOT_EXIST 100
 #define USER_EXIST 101
 #define WRONG_PASSWORD 102
+#define USER_TOO_MUCH 103
 
 #define NOT_FRIEND 200
 #define ALREADY_FRIEND 201
@@ -31,5 +32,11 @@
 #define FLAG_INSERT 501
 #define FLAG_DELETE 502
 #define FLAG_UPDATE 503
+
+#define DB_CONN_INIT_FAIL 601
+#define DB_CONN_CONNECT_FAIL 602
+#define DB_QUERY_FAIL 603
+#define DB_BUSY 604
+#define DB_NO_MORE_DATA 605
 
 #endif
