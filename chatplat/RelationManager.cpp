@@ -28,6 +28,11 @@ int RelationManager::Restart(){
 }
 
 int RelationManager::UserRelationInit(int user_id){
+	for(int i=0;i<relation_count_;i++){
+		if(relations_[i].user_id()==user_id){
+			return RELATION_EXIST;
+		}
+	}
 	if(relation_count_<10239){
 		relations_[relation_count_].set_user_id(user_id);
 		relation_count_++;

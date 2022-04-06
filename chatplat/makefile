@@ -25,5 +25,5 @@ svr:
 cln:
 	g++ -o client_ssp proto/*.o conf.o sock.o 2client.cpp -lprotobuf
 clean:
-	rm -f ./proto/*.o ./proto/*.pb.cc ./proto/*.pb.h *.o server_ssp client_ssp
+	rm -f ./proto/*.o ./proto/*.pb.cc ./proto/*.pb.h *.o dbtest server_ssp client_ssp
 

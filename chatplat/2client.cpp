@@ -6,15 +6,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/time.h>
 #include "Socket.h"
 #include "common/proto.h"
 #include "proto/message_define.pb.h"
 
-#define GOTO_NEXT if(ret==0){phase++;}  //重复使用的部分直接定义宏 节约逻辑里面的代码
+#define GOTO_BEGIN if(ret==0){phase=1;}
+#define GOTO_NEXT if(ret==0){phase++;}
 #define GOTO_LOGIN if(ret==0){phase=5;}
 #define GET_OUT if(ret==0){phase=999;}
 #define WAIT_RSP_GO_NEXT ret=RecvRsp();GOTO_NEXT
 #define WAIT_RSP_GO_LOGIN ret=RecvRsp();GOTO_LOGIN
+#define WAIT_RSP_GO_BEGIN ret=RecvRsp();GOTO_BEGIN
 #define WAIT_RSP_GET_OUT ret=RecvRsp();GET_OUT
 #define CHECK_SERVER_ON if(ret<0){ \
 							printf("Server Not Ready\n"); \
@@ -25,7 +29,9 @@
 	int ret=sock.SocketSend(common_req.ByteSize());\
 	send_count++;\
 	return ret;
-
+#define CHECK_SEND need_send=check_need_send(time0_now,time0_last);\
+					if(need_send==0){break;}\
+					update(time0_last);
 int send_count=0;
 int recv_count=0;
 
@@ -51,12 +57,12 @@ int Login(const char *user_name,const char* password){
 	common_req.mutable_login_req()->set_password(password);
 	SEND
 }
-int AddFriend(int user_id,int other_id){//加好友
+int AddFriend(int user_id,int other_id){
 	common_req.Clear();
 	common_req.mutable_header()->set_ver(1);
 	common_req.mutable_header()->set_cmd_type(ADD_FRIEND_REQ);
 	common_req.mutable_add_friend_req()->set_user_id(user_id);
-	common_req.mutable_add_friend_req()->set_other_id(other_id);//用压测工具不断区调优的时侯方便去测，所以这里做成接口形式。
+	common_req.mutable_add_friend_req()->set_other_id(other_id);
 	SEND
 }
 int DelFriend(int user_id,int other_id){
@@ -93,10 +99,13 @@ int ShutDown(){
 	common_req.Clear();
 	common_req.mutable_header()->set_ver(1);
 	common_req.mutable_header()->set_cmd_type(SERVER_SHUTDOWN);
-	common_req.SerializeToArray(sock.send_buffer,common_req.ByteSize());//进行序列化
+	common_req.SerializeToArray(sock.send_buffer,common_req.ByteSize());
 	int ret=sock.SocketSend(common_req.ByteSize());
 	return ret;
 }
+int saved_user_id1=0;
+int saved_user_id2=0;
+
 int RecvRsp(){
 	int ret=sock.SocketCheckRecv();
 	if(ret>0){
@@ -114,6 +123,13 @@ int RecvRsp(){
 				printf("Receive Login Rsp\n");
 				printf("ret    : %d\n",common_rsp.login_rsp().ret());
 				printf("user_id: %d\n",common_rsp.login_rsp().user_id());
+				if(saved_user_id1==0){
+					saved_user_id1=common_rsp.login_rsp().user_id();
+				}else{
+					if(saved_user_id2==0){
+						saved_user_id2=common_rsp.login_rsp().user_id();
+					}
+				}
 			break;
 			case ADD_FRIEND_RSP:
 				printf("Receive AddFriend Rsp\n");
@@ -130,13 +146,57 @@ int RecvRsp(){
 			case GET_PHOTO_RSP:
 				printf("Receive GetPhoto Rsp\n");
 				printf("ret    : %d\n",common_rsp.get_photo_rsp().ret());
+				printf("update : %d\n",common_rsp.get_photo_rsp().last_publisher_id());
 			break;
 			case GET_MESSAGE_LIST_RSP:
+			{
 				printf("Receive GetMessageList Rsp\n");
 				printf("ret    : %d\n",common_rsp.get_message_list_rsp().ret());
+				int message_count=common_rsp.get_message_list_rsp().message_list_size();
+				printf("count  : %d\n",common_rsp.get_message_list_rsp().message_list_size());
+				for(int i=0;i<message_count;i++){
+					printf("%6d : %s\n",common_rsp.get_message_list_rsp().message_list(i).publisher_id(),
+		   								common_rsp.get_message_list_rsp().message_list(i).content().c_str());
+				}
+			}	
 			break;
 			default:
 			break;
+		}
+	}else{
+		return -1;
+	}
+	return 0;
+}
+int delay=0;
+int update(struct timeval &tim){
+	tim.tv_usec = tim.tv_usec + delay;
+	if(tim.tv_usec > 1000000){
+		tim.tv_usec = tim.tv_usec - 1000000;
+		tim.tv_sec = tim.tv_sec + 1;
+	}
+	return 0;
+}
+
+int check_need_send(struct timeval t0,struct timeval t1){
+	int sec=t0.tv_sec-t1.tv_sec;
+	int usec=t0.tv_usec-t1.tv_usec;
+	int delta=sec*1000+usec/1000;
+	if(delta > delay){
+		return 1;
+	}
+	return 0;
+}
+int Reg10000(){
+	int ret=0;
+	for(int i=10000;i<20000;i++){
+		char user_name[16];
+		sprintf(user_name,"hank%d",i);
+		ret=Register(user_name,"12345678");
+		if(ret==0){
+			do{
+				ret=RecvRsp();
+			}while(ret==-1);
 		}
 	}
 	return 0;
@@ -145,24 +205,38 @@ int main(){
 	int ret;
 	ret=sock.Init();
 	ret=sock.ClientSocketInit();
-	CHECK_SERVER_ON//宏定义
+	CHECK_SERVER_ON
 	int client_on=1;
-	int phase=1;//定义不同的阶段
+	int phase=1;
+	int count_down=40;
 	int time_begin=time(NULL);
-	printf("----[debug]begin_time:%d\n",time_begin);
+	int send_per_second=5000;
+	delay=1000000/send_per_second;
+	struct timeval time0_last;
+	//tv_sec
+	//tv_usec 1000000 1000us=1ms
+	gettimeofday(&time0_last,NULL);
+	//Reg10000();
+	//return 0;
+	struct timeval time0_now; 
 	while(client_on){
+		gettimeofday(&time0_now,NULL);
 		int time_now=time(NULL);
-		//printf("----[debug]now_time:%d\n",time_now);
-		if(time_now-time_begin>60){//如果时间大于60秒，则自动退出
-			printf("----[debug]end_time:%d\n",time_now);
-			printf("----[debug]send %d %d\n----[debug]recv %d %d\n",
-		  			send_count,send_count/60,
-		  			recv_count,recv_count/60);
-			phase=999;
+		if(time_now>time_begin){
+			time_begin=time_now;
+			count_down--;
+			if(count_down<=0){
+				phase=999;
+			}
+			printf("---- send %d recv %d\n",send_count,recv_count);
+			send_count=0;
+			recv_count=0;
 		}
+		int need_send=0;
 		//printf("----[debug]phase=%d\n",phase);
 		switch(phase){
 			case 1:
+				CHECK_SEND
 				ret=Register("hank1234","12345678");
 				GOTO_NEXT
 				break;
@@ -170,57 +244,65 @@ int main(){
 				WAIT_RSP_GO_NEXT
 				break;
 			case 3:
+				CHECK_SEND
 				ret=Register("hank5678","88888888");
 				GOTO_NEXT
 				break;
-			case 4://等待服务端关闭
+			case 4:
 				//WAIT_RSP_GET_OUT
 				WAIT_RSP_GO_NEXT
 				break;
 			case 5:
-				ret=Login("hank1234","12345678");
+				CHECK_SEND
+				ret=Login("hank14567","12345678");
 				GOTO_NEXT
 				break;
 			case 6:
 				WAIT_RSP_GO_NEXT
 				break;
 			case 7:
-				ret=Login("hank5678","88888888");
+				CHECK_SEND
+				ret=Login("hank15678","12345678");
 				GOTO_NEXT
 				break;
 			case 8:
 				WAIT_RSP_GO_NEXT
 				break;
 			case 9:
-				ret=AddFriend(10001,10002);
+				CHECK_SEND
+				ret=AddFriend(saved_user_id1,saved_user_id2);
 				GOTO_NEXT
 				break;
 			case 10:
 				WAIT_RSP_GO_NEXT
 				break;
 			case 11:
-				ret=PublishMessage(10002,"Hank Is Here");
+				CHECK_SEND
+				ret=PublishMessage(saved_user_id1,"Hank Is Here");
 				GOTO_NEXT
 				break;
 			case 12:
 				WAIT_RSP_GO_NEXT
 				break;
 			case 13:
-				ret=GetPhoto(10001);
+				CHECK_SEND
+				ret=GetPhoto(saved_user_id2);
 				GOTO_NEXT
 				break;
 			case 14:
 				WAIT_RSP_GO_NEXT
 				break;
 			case 15:
-				ret=GetMessageList(10001);
+				CHECK_SEND
+				ret=GetMessageList(saved_user_id2);
 				GOTO_NEXT
 				break;
 			case 16:
 				WAIT_RSP_GO_NEXT
 				break;
 			case 17:
-				DelFriend(10001,10002);
+				CHECK_SEND
+				ret=DelFriend(saved_user_id1,saved_user_id2);
 				GOTO_NEXT
 				break;
 			case 18:
@@ -233,9 +315,7 @@ int main(){
 				client_on=0;
 			break;
 		}
-		//usleep(5000);
 	}
-
 	sock.ClientClose();
 	return 0;
 }

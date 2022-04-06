@@ -12,6 +12,8 @@
 
 
 void MessageManager::Start(){
+	//todo
+	//Get Message Id from DB
 	set_cur_message_id(100001);
 }
 void MessageManager::Proc(){
@@ -43,6 +45,7 @@ int MessageManager::PublishMessage(MessageInfo message){
 	if(message_count_==10239){
 		return MESSAGE_TOO_MUCH;
 	}
+	int ret_mess_id=cur_message_id();
 	messages_[message_count_].set_message_id(cur_message_id());
 	messages_[message_count_].set_user_id(message.user_id());
 	messages_[message_count_].set_publish_time(message.publish_time());
@@ -50,7 +53,7 @@ int MessageManager::PublishMessage(MessageInfo message){
 	cur_message_id_++;
 	message_count_++;
 	
-	return SUCCESS;
+	return ret_mess_id;
 }
 int MessageManager::DeleteMessage(int message_id){
 	for(int i=0;i<message_count_;i++){

@@ -49,6 +49,7 @@ int main(){
 		int time_now=time(NULL);
 		int ret=0;
 		if (check_sock==-1){
+			usleep(5000);
 			continue;
 		}
 		common_req.ParseFromArray(sock.recv_buffer,10240);
@@ -81,11 +82,14 @@ int main(){
 			
 			case LOGIN_REQ:
 			{
-				common_rsp.mutable_login_rsp()->Clear();//发送请求之前把接收到的缓存清空
+				common_rsp.mutable_login_rsp()->Clear();
 				ret=user_svr.LoginCheck(common_req.login_req().user_name().c_str(),
 										common_req.login_req().password().c_str());
 				
 				int user_id=user_svr.GetUserIdByUserName(common_req.login_req().user_name().c_str());
+				int ret1=rela_svr.UserRelationInit(user_id);
+				int ret2=photo_svr.CreatePhoto(user_id);
+				printf("logincheck=%d rela_create=%d photo_create=%d\n",ret,ret1,ret2);
 				common_rsp.mutable_login_rsp()->set_ret(ret);
 				if(ret==SUCCESS){
 					common_rsp.mutable_login_rsp()->set_user_id(user_id);
@@ -119,13 +123,26 @@ int main(){
 			{
 				common_rsp.mutable_publish_message_rsp()->Clear();
 				int user_id=common_req.publish_message_req().user_id();
+				int mess_id_ret=0;
 				ret=user_svr.CheckExist(user_id);
 				if(ret==USER_EXIST){
 					MessageInfo message;
 					message.set_user_id(user_id);
 					message.set_content(common_req.publish_message_req().content().c_str());
 					message.set_publish_time(time_now);
-					ret=mess_svr.PublishMessage(message);
+					mess_id_ret=mess_svr.PublishMessage(message);
+					printf("message_publish=%d\n",mess_id_ret);
+				}
+				if(mess_id_ret!=MESSAGE_TOO_MUCH){
+					RelationInfo* rela_info=rela_svr.GetRelation(user_id);
+					if(rela_info){
+						printf("friend_count=%d\n",rela_info->friend_count());
+						for(int i=0;i<rela_info->friend_count();i++){
+							int friend_id=rela_info->GetFriendByIndex(i);
+							photo_svr.UpdatePhoto(friend_id,user_id,time_now,0);
+							mess_svr.PushUserMessageId(friend_id,mess_id_ret);
+						}
+					}
 				}
 				common_rsp.mutable_publish_message_rsp()->set_ret(ret);
 				common_rsp.SerializeToArray(sock.send_buffer,10240);
@@ -140,7 +157,10 @@ int main(){
 				if(ret==USER_EXIST){
 					PhotoInfo* photo = photo_svr.GetPhoto(user_id);
 					if(photo!=NULL){
+						printf("last_publisher_id: %d\n",photo->last_publisher_id());
 						common_rsp.mutable_get_photo_rsp()->set_last_publisher_id(photo->last_publisher_id());
+					}else{
+						printf("photo info is null\n");
 					}
 				}
 				common_rsp.mutable_get_photo_rsp()->set_ret(ret);
@@ -154,9 +174,9 @@ int main(){
 				int user_id=common_req.get_message_list_req().user_id();
 				ret=user_svr.CheckExist(user_id);
 				if(ret==USER_EXIST){
-					vector<int> ids=mess_svr.GetMessageIds(user_id);//获取消息列表
-					for(int i=0;i<ids.size();i++){
-						MessageInfo* message=mess_svr.GetMessage(ids[i]);//获取每条消息
+					vector<int> ids=mess_svr.GetMessageIds(user_id);
+					for(int i=0;i<ids.size()&&i<10;i++){
+						MessageInfo* message=mess_svr.GetMessage(ids[i]);
 						ssp::MessageItem* item=common_rsp.mutable_get_message_list_rsp()->add_message_list();
 						item->set_publisher_id(message->user_id());
 						item->set_publish_time(message->publish_time());
@@ -197,7 +217,6 @@ int main(){
 			default:
 			break;
 		}
-		//usleep(5000);
 	}
 	user_svr.Shutdown();
 	rela_svr.Shutdown();

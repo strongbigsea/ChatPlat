@@ -90,7 +90,7 @@ int DbManager::GetUsersOneByOne(UserInfo* user){
 			user_info[i]=(row[1][2*i]-'a')*16+(row[1][2*i+1]-'a');
 		}
 		int ret=pb_user.ParseFromArray(user_info,10240);
-		printf("%s %d\n",row[1],ret);
+		//printf("%s %d\n",row[1],ret);
 		user->FromPb(pb_user);
 	}else{
 		return DB_NO_MORE_DATA;
@@ -127,8 +127,8 @@ int DbManager::GetCurUserId(){
 int DbManager::InsertUser(UserInfo* user){
 	ssp::UserInfoBase pb_user;
 	user->ToPb(pb_user);
-	printf("user    password: %s\n",user->password());
-	printf("pb_user password: %s\n",pb_user.password().c_str());
+	//printf("user    password: %s\n",user->password());
+	//printf("pb_user password: %s\n",pb_user.password().c_str());
 	char user_id[256];
 	sprintf(user_id,"%d",user->user_id());
 	char user_info[10240];
@@ -145,7 +145,7 @@ int DbManager::InsertUser(UserInfo* user){
 	insertSql+="','";
 	insertSql+=user_info2;
 	insertSql+="')";
-	printf("insert: %s\n",insertSql.c_str());
+	//printf("insert: %s\n",insertSql.c_str());
 	int ret=mysql_query(conn,insertSql.c_str());
 	if(ret==0){
 		return SUCCESS;
