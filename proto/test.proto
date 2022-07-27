@@ -1,0 +1,19 @@
+package ssp;//定义命名空间
+
+message Test{
+    optional int32 a = 1;
+    optional int32 b = 2;
+    optional int32 c = 3;
+    optional string d = 4;
+};
+message Testlist{
+    optional int32 a = 1;
+    repeated Test tl = 2;
+};
+message UserInfoBaseTest{
+    optional uint32 ver = 1;
+    optional uint32 user_id = 2;
+    optional string user_name =  3;
+    optional string password = 4;
+    optional uint32 max_num = 33;
+};
